@@ -1,0 +1,1 @@
+Script for downloading (only) music from YouTube videos with timestamps if given (as interval).
