@@ -1,1 +1,4 @@
-Script for downloading (only) music from YouTube videos with timestamps if given (as interval).
+# Sound downloader from youtube videos
+
+Script using **PyTube** for downloading (only) music from YouTube videos (given as url) with timestamps if given (as interval).<br>
+Linux command **ffmpeg** required for cropping and extracting music from video.
