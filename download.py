@@ -1,16 +1,35 @@
-from pytube import YouTube 
-from pathlib import Path
 import subprocess
+from pathlib import Path
+from typing import Tuple
+
+from pytube import YouTube
 
 
-def _check_interval(interval: list):
+def _format_time(side) -> str:
+    if len(side) == 1:
+        if len(side[0]) == 1:
+            # mins < 10; add leading zero
+            limit = f"0{side[0]}"
+        limit += ":00"
+    else:
+        mins, secs = side
+        # Adding leading / trailing zero
+        if len(mins) == 1:
+            mins = "0" + mins
+        if len(secs) == 1:
+            secs = secs + "0"
+        limit = ":".join([mins, secs])
+
+    return limit
+
+
+def _check_interval(interval: list) -> Tuple[str, str]:
     """Validates the interval and then returns it formatted"""
     if len(interval) > 2:
         raise Exception("Too many arguments!")
 
-    start = ""
-    end = ""
-    for ind, item in enumerate(interval):
+    limits = []
+    for item in interval:
         side: str = item.split(':')
         if len(side) > 2:
             raise Exception("Invalid time interval!")
@@ -18,30 +37,19 @@ def _check_interval(interval: list):
         if not all([val.isnumeric() for val in side]):
             raise Exception("Invalid time interval!")
 
-        side_len = len(side)
-        if ind == 0:
-            if side_len == 1:
-                start = side[0] + ":0"
-            else:
-                if len(side[1]) == 1:
-                    # Adding trailing zero
-                    side[1] = side[1] + '0'
-                start = ":".join(side)
-        else:
-            if side_len == 1:
-                end = side[0] + ":0"
-            else:
-                if len(side[1]) == 1:
-                    # Adding trailing zero
-                    side[1] = side[1] + '0'
-                end = ":".join(side)
+        limits.append(_format_time(side))
+
+    if len(limits) == 2:
+        start, end = limits
+    else:
+        start, end = "", *limits
 
     return (start, end)
 
 
 def _get_new_length(video_len: int, left: str, right: str):
     """Returns length of cropped video"""
-    left_time, right_time = -1, -1 # Only for supressing warnings
+    left_time, right_time = -1, -1  # Only for supressing warnings
 
     if left:
         minutes, secods = list(map(int, left.split(':')))
@@ -59,17 +67,20 @@ def _get_new_length(video_len: int, left: str, right: str):
         if left_time > right_time:
             raise Exception("Start of the interval is bigger than the end!")
 
-        new_minutes = str((right_time - left_time) // 60)
-        new_seconds = str((right_time - left_time) % 60)
-        return ":".join([new_minutes, new_seconds])
+        mins = (right_time - left_time) // 60
+        secs = (right_time - left_time) % 60
     else:
-        # Only cropped from start (only left time)
-        new_minutes = str((video_len - left_time) // 60)
-        new_seconds = str((video_len - left_time) % 60)
-        return ":".join([new_minutes, new_seconds])
+        # Only cropped to the given timestamp (only right time)
+        mins = right_time // 60
+        secs = right_time % 60
+
+    zeros_m = "0" if mins < 10 else ""
+    zeros_s = "0" if secs < 10 else ""
+
+    return ":".join([f"{zeros_m}{mins}", f"{zeros_s}{secs}"])
 
 
-def download_url(url: str, interval: list, fname: str, output: str):
+def download_url(url: str, final_ext: str, interval: list, fname: str, output: str):
     """Downloads music from given url with a given time interval"""
     try:
         yt = YouTube(url)
@@ -77,12 +88,12 @@ def download_url(url: str, interval: list, fname: str, output: str):
         print("Invalid url!")
         return
 
-    best_audio = yt.streams.filter(only_audio=True).first()
+    best_audio = yt.streams.filter(
+        only_audio=True, file_extension='mp4').first()
 
     if not best_audio.includes_audio_track:
         print(
-            f"Unfortunately video: \"{yt.title}\" does not contain audio track!"
-        )
+            f"Unfortunately video: \"{yt.title}\" does not contain audio track!")
         return
 
     video_len = yt.length
@@ -95,27 +106,53 @@ def download_url(url: str, interval: list, fname: str, output: str):
             return
     else:
         left, right = ('', '')
-        new_length = f"{video_len // 60}:{video_len % 60}"
+        zeros_s = "0" if (video_len % 60) < 10 else ""
+        zeros_m = "0" if (video_len // 60) < 10 else ""
+        new_length = f"{zeros_m}{video_len // 60}:{zeros_s}{video_len % 60}"
 
     if fname is None:
-        fname = best_audio.default_filename.split('.')[0]
+        fname, original_ext = best_audio.default_filename.split('.')
+    else:
+        fname, original_ext = fname.split('.')
 
     if output is None:
         output = str(Path.home()) + '/Music/'
 
+    print("Downloading music...")
     filename = best_audio.download(output_path=output, filename=fname)
+    cp_file = None
 
-    cp_file = filename.split('.')
-    cp_file = cp_file[0] + "_cp." + cp_file[1]
+    if final_ext is None:
+        final_ext = original_ext
 
-    start = f"-ss {left}" if left != '' else ''
-    end = f"-to {right}" if right != '' else ''
+    if interval is not None:
+        start = f"-ss {left}" if left else ""
+        end = f"-to {right}" if right else ""
 
-    crop_cmd = f"ffmpeg -loglevel warning {start} {end} -i \"{filename}\" -codec copy \"{cp_file}\""
-    subprocess.run(crop_cmd, shell=True)
+        print_left = left if left else "00:00"
+        print(f"Cropping music with interval: {print_left} - {right}")
 
-    mv_cmd = f"rm \"{filename}\"; mv \"{cp_file}\" \"{filename}\""
-    subprocess.run(mv_cmd, shell=True)
+        cp_file = filename + "_cp." + original_ext
 
-    print(f"File saved in: {filename}")
-    print(f"Music duration: {new_length}")
+        # Cannot be done in place so copy must be done
+        crop_cmd = f"ffmpeg -loglevel warning {start} {end} -i \"{filename}\" -codec copy \"{cp_file}\"; rm \"{filename}\""
+        subprocess.run(crop_cmd, shell=True)
+
+    if cp_file is None:
+        # No copy was created
+        cp_file = filename
+
+    print("Saving music in desired format...")
+    mv_cmd = f"ffmpeg -loglevel warning -i \"{cp_file}\" \"{filename}.{final_ext}\""
+    rm_cmd = f"rm \"{cp_file}\""
+
+    mv_output = subprocess.run(mv_cmd, shell=True)
+    subprocess.run(rm_cmd, shell=True)
+
+    if mv_output.returncode == 0:
+        print(f"File saved in: {filename}")
+        print(f"Music duration: {new_length}")
+
+
+if __name__ == '__main__':
+    print("Please run ytsound.py script!")
