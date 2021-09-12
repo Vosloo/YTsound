@@ -1,10 +1,17 @@
 #!/usr/bin/env python
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import Tuple
 
-from pytube import YouTube
+from pytube.exceptions import RegexMatchError
+
+try:
+    from pytube import YouTube
+except ModuleNotFoundError:
+    print("Module Pytube is not installed! Please install it first.")
+    sys.exit(-1)
 
 
 def _format_time(side) -> str:
@@ -86,8 +93,8 @@ def download_url(url: str, final_ext: str, interval: list, fname: str, output: s
     """Downloads music from given url with a given time interval"""
     try:
         yt = YouTube(url)
-    except Exception:
-        print("Invalid url!")
+    except RegexMatchError:
+        print("Could not find such url, please ensure that it is valid!")
         return
 
     best_audio = yt.streams.filter(
