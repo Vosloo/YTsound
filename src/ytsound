@@ -39,7 +39,7 @@ def add_arguments(parser: ArgumentParser):
         dest="filename",
         required=False,
         type=str,
-        help="sets custom name for output file (name without extension)")
+        help="sets custom name for output file")
 
     parser.add_argument(
         "-o",

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import subprocess
 from pathlib import Path
 from typing import Tuple
@@ -112,8 +114,12 @@ def download_url(url: str, final_ext: str, interval: list, fname: str, output: s
 
     if fname is None:
         fname, original_ext = best_audio.default_filename.split('.')
-    else:
+    elif '.' in fname:
+        # Filename with extension
         fname, original_ext = fname.split('.')
+    else:
+        # Filename stem (no extension)
+        fname, original_ext = fname, 'mp4'
 
     if output is None:
         output = str(Path.home()) + '/Music/'
@@ -155,4 +161,4 @@ def download_url(url: str, final_ext: str, interval: list, fname: str, output: s
 
 
 if __name__ == '__main__':
-    print("Please run ytsound.py script!")
+    print("Please run ytsound script!")
